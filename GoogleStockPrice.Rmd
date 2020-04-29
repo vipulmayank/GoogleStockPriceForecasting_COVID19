@@ -1,0 +1,395 @@
+---
+title: <center> <b> Forecasting Google Stock Price </b> </center>
+subtitle: <center> ARIMA, KNN & Neural Networks </center>
+author: <center> Vipul Mayank </center>
+output: 
+  html_document:
+    code_folding : hide
+    toc: true
+    toc_depth: 3
+    toc_float: true 
+---
+
+<style>
+body {
+text-align: justify;
+font-family: "Bookman", Bookman;
+font-size: 14pt;
+}
+</style>
+
+<style>
+h1 {
+color: #0002C0;
+font-family: Bookman;
+font-weight:bold; 
+}
+h2 {
+color: #0002C0;
+font-family: Bookman;
+font-weight:bold;
+}
+h3 {
+color: #0002C0;
+font-family: Bookman;
+font-weight:bold;
+}
+h4 {
+color: #0002C0;
+font-family: Bookman;
+font-weight:bold;
+}
+a, a:hover {
+color: #C70039 ;
+}
+</style>
+
+
+# 1. Synopsis
+
+The goal of this project is to predict the future stock price of Google using various predictive forecasting models and then analysing the various models. The dataset for Google stocks is obtained from Yahoo Finance using Quantmod package in R. The timeline of the data is from 2015 till present day(4/26/2020). 
+
+![](D:/College/Courses/Spring 2020/Forecasting and Time Series/Final Project/GoogleLogo.jpg){width=1000px}
+
+<hr/>
+
+# 2. Introduction
+
+A forecasting algorithm is a process that seeks to predict future values based on the past and present data. This historical data points are extracted and prepared trying to predict future values for a selected variable of the dataset. During market history there have been a continuous interest trying to analyse its tendencies, behavior and random reactions. This continous concern to understand what happens before it really happens motivates us to continue with this study. We shall also try and understand the impact of **COVID-19** disaster on the stock prices.
+
+<hr/>
+
+# 3. Packages Required
+
+```{r Loading the required packages, results='hide', warning=FALSE, message=FALSE}
+library(quantmod)
+library(forecast)
+library(tseries)
+library(timeSeries)
+library(dplyr)
+library(readxl)
+library(kableExtra)
+library(data.table)
+library(DT)
+library(tsfknn)
+library(ggplot2)
+```
+
+
+```{r displaying the packages table, echo=FALSE}
+#Reading the variable summary excel File
+package_sum <- read_excel("D:/College/Courses/Spring 2020/Forecasting and Time Series/Final Project/Package Summary.xlsx")
+
+kable(package_sum) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, fixed_thead = T )
+```
+
+<hr/>
+
+# 4. Data Preparation
+
+### 4.1 Importing the data
+
+We obtain the data of from 2015-01-01 of Google Stock price for our analysis using the quantmod package.
+To analyse the impact of COVID-19 on the Google Stock price, we take two sets of data from the quantmod package.
+
+* First is named as google_data_before_covid which contains data till February 28th, 2020.
+* Second is named as google_data_after_covid which contains data till April 24, 2020.
+
+All the analysis and the models will be made on both the datasets to analyse the impact of COVID-19, if any.
+
+```{r Importing the dataset, results='hide',warning=FALSE, message=FALSE}
+getSymbols("GOOG", src = "yahoo", from = "2015-01-01", to = "2019-02-28")
+google_data_before_covid <- as.data.frame(GOOG)
+tsData_before_covid <- ts(google_data_before_covid$GOOG.Close)
+
+getSymbols("GOOG", src = "yahoo", from = "2015-01-01")
+google_data_after_covid <- as.data.frame(GOOG)
+tsData_after_covid <- ts(google_data_after_covid$GOOG.Close)
+
+```
+
+<hr/>
+
+### 4.2 Graphical Representation of Data
+
+```{r Graphical View of Stock Price Data, warning=FALSE, message=FALSE, fig.align='center'}
+par(mfrow = c(1,2))
+plot.ts(tsData_before_covid, ylab = "Closing Price", main = "Before COVID-19")
+plot.ts(tsData_after_covid, ylab = "Closing Price", main = "During COVID-19")
+
+```
+
+### 4.3 Dataset Preview
+
+The final datasets can be found below in an interactive table.
+
+```{r Cleaned Dataset, echo=TRUE, warning=FALSE, fig.align='center'}
+datatable(google_data_before_covid, filter = 'top')
+
+```
+
+<hr/>
+
+### 4.4 Summary of variables
+
+```{r displaying the Variable Summary, echo=FALSE}
+#Reading the variable summary excel File
+package_sum <- read_excel("D:/College/Courses/Spring 2020/Forecasting and Time Series/Final Project/Variable Summary.xlsx")
+
+kable(package_sum) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, fixed_thead = T )
+``` 
+
+<hr/>
+
+# 5. ARIMA Model
+
+Let us first analyse the ACF and PACF Graph of each of the two datasets.
+
+```{r ACF and PACF, message=FALSE, warning=FALSE, fig.align='center'}
+par(mfrow = c(2,2))
+acf(tsData_before_covid, main = "Before COVID-19")
+pacf(tsData_before_covid, main = "Before COVID-19")
+
+acf(tsData_after_covid, main = "After COVID-19")
+pacf(tsData_after_covid, main = "After COVID-19")
+
+```
+
+We then conduct an **ADF (Augmented Dickey-Fuller)** test and **KPSS (Kwiatkowski-Phillips-Schmidt-Shin)** test to check for the stationarity of the time series data for both the datasets closing price.
+
+```{r ADF Test, warning=FALSE, message=FALSE}
+print(adf.test(tsData_before_covid))
+print(adf.test(tsData_after_covid))
+
+```
+
+From the above ADF tests, we can conclude the following:
+
+* For the dataset before COVID-19, the ADF tests gives a p-value of **0.2093 which is greater than 0.05**, thus implying that the time series data is **not stationary**.
+
+* For the dataset after COVID-19, the ADF tests gives a p-value of **0.01974 which is lesser than 0.05**, thus implying that the time series data is **stationary**.
+
+```{r KPSS Test for Stationarity, warning=FALSE, message=FALSE}
+print(kpss.test(tsData_before_covid))
+print(kpss.test(tsData_after_covid))
+
+```
+
+From the above KPSS tests, we can conclude the following:
+
+* For the dataset before COVID-19, the KPSS tests gives a p-value of **0.01 which is less than 0.05**, thus implying that the time series data is **not stationary**.
+
+* For the dataset after COVID-19, the KPSS tests gives a p-value of **0.01 which is less than 0.05**, thus implying that the time series data is **not stationary**.
+
+Thus, we can conclude from the above two tests that the time series data is **not stationary**.
+
+
+We then use the **auto.arima** function to determine the time series model for each of the datasets.
+
+```{r ARIMA Modelling, warning=FALSE, message=FALSE}
+
+modelfit_before_covid <- auto.arima(tsData_before_covid, lambda = "auto")
+summary(modelfit_before_covid)
+
+modelfit_after_covid <- auto.arima(tsData_after_covid, lambda = "auto")
+summary(modelfit_after_covid)
+
+```
+
+From the auto.arima function, we conclude the following models for the two datasets:
+
+* **Before COVID-19: ARIMA(2,1,0)**
+* **After COVID-19: ARIMA(1,1,1)**
+
+After obtaining the model, we then perform residual diagnostics for each of the fitted models.
+
+```{r Residual diagnostics check for each model, warning=FALSE, message=FALSE, fig.align='center'}
+par(mfrow = c(2,3))
+
+plot(modelfit_before_covid$residuals, ylab = 'Residuals', main = "Before COVID-19")
+acf(modelfit_before_covid$residuals,ylim = c(-1,1), main = "Before COVID-19")
+pacf(modelfit_before_covid$residuals,ylim = c(-1,1), main = "Before COVID-19")
+
+plot(modelfit_after_covid$residuals, ylab = 'Residuals', main = "After COVID-19")
+acf(modelfit_after_covid$residuals,ylim = c(-1,1), main = "After COVID-19")
+pacf(modelfit_after_covid$residuals,ylim = c(-1,1), main = "After COVID-19")
+```
+
+From the residual plot , we can confirm that the residual has a mean of 0 and the variance is constant as well . The ACF is 0 for lag> 0 , and the PACF is 0 as well.
+
+So, we can say that the residual behaves like white noise and conclude that the models ARIMA(2,1,0) and ARIMA(1,1,1) fits the data well. Alternatively, we can also test at a significance level of 0.05 if residual follow white noise using the Box-Ljung Test.
+
+```{r Check Residuals using Box Ljung Test, warning=FALSE, message=FALSE}
+Box.test(modelfit_before_covid$residuals, type = "Ljung-Box")
+Box.test(modelfit_after_covid$residuals, type = "Ljung-Box")
+
+```
+
+Here, the p value for both the models is greater than 0.05 . Hence, at a significance level of 0.05 we fail to reject the null hypothesis and conclude that the residual follows white noise. This means that the model fits the data well.
+
+
+
+Once we have finalized the model for each of the datasets, we can then forecast the prices of the stock in the future days.
+
+```{r Forecast the data, message=FALSE, warning=FALSE, fig.align='center', echo=FALSE}
+par(mfrow = c(2,1))
+price_forecast_march_april <- forecast(modelfit_before_covid, h = 61)
+price_forecast_may_june <- forecast(modelfit_after_covid, h = 65)
+
+plot(price_forecast_march_april, main = "Before COVID-19")
+plot(price_forecast_may_june, main = "After COVID-19")
+
+
+```
+
+
+<hr/>
+
+
+
+# 6. KNN Regression Time Series Forecasting Model
+
+KNN model can be used for both classification and regression problems. The most popular application is to use it for classification problems. Now with the tsfknn package KNN can be implemented on any regression task. The idea of this study is illustrating the different forecasting tools, comparing them and analysing the behavior of predictions. Following our KNN study, we proposed it can be used for both classification and regression problems. For predicting values of new data points, the model uses ‘feature similarity’, assigning a new point to a values based on how close it resembles the points on the training set.
+
+The first task is to determine the value of k in our KNN Model. The general rule of thumb for selecting the value of k is taking the square root of the number of data points in the sample. Hence, for the data set before COVID-19 we take k = 32 and for the dataset after COVID-19, we take k = 36.
+
+```{r KNN Model, warning=FALSE, message=FALSE, fig.align='center'}
+par(mfrow = c(2,1))
+predknn_before_covid <- knn_forecasting(google_data_before_covid$GOOG.Close, h = 61, lags = 1:30, k = 32, msas = "MIMO")
+predknn_after_covid <- knn_forecasting(google_data_before_covid$GOOG.Close, h = 65, lags = 1:30, k = 36, msas = "MIMO")
+
+plot(predknn_before_covid, main = "Before COVID-19")
+plot(predknn_after_covid, main = "After COVID-19")
+
+```
+
+We then evaluate the KNN model for our forecasting time series.
+
+```{r Rolling Origin Estimation, warning=FALSE, message=FALSE, results='hide'}
+knn_ro_before_covid <- rolling_origin(predknn_before_covid)
+knn_ro_after_covid <- rolling_origin(predknn_after_covid)
+
+```
+
+
+```{r Printing Evaluation Parameters, echo=FALSE,warning=FALSE, message=FALSE}
+knn_ro_before_covid$global_accu
+knn_ro_after_covid$global_accu
+
+```
+
+
+<hr/>
+
+
+# 7. Feed Forward Neural Network Modelling
+
+The next model which we would try and implement is a forecasting model with neural networks. In this model, we are using single hidden layer form where there is only one layer of input nodes that send weighted inputs to a subsequent layer of receiving nodes. The nnetar function in the forecast package fits a single hidden layer neural network model to a timeseries. The function model approach is to use lagged values of the time series as input data, reaching to a non-linear autoregressive model.
+
+The first step is to determine the number of hidden layers for our neural network. Although, there is no specific method for calculating the number of hidden layers, the most common approach followed for timeseries forecasting is by calculating is using the formula:
+
+<center> $N(hidden) = Ns / (a * (Ni + No))$ <center/>
+
+where Ns: Number of train samples
+      Ni: Number of input neurons
+      No: Number of output neurons
+      a : 1.5^-10
+
+```{r Hidden layer calculation and fitting the model, warning=FALSE, message=FALSE, fig.align='center'}
+#Hidden layers creation
+alpha <- 1.5^(-10)
+hn_before_covid <- length(google_data_before_covid$GOOG.Close)/(alpha*(length(google_data_before_covid$GOOG.Close) + 61))
+hn_after_covid <- length(google_data_after_covid$GOOG.Close)/(alpha*(length(google_data_after_covid$GOOG.Close) + 65))
+
+#Fitting nnetar
+lambda_before_covid <- BoxCox.lambda(google_data_before_covid$GOOG.Close)
+lambda_after_covid <- BoxCox.lambda(google_data_after_covid$GOOG.Close)
+dnn_pred_before_covid <- nnetar(google_data_before_covid$GOOG.Close, size = hn_before_covid, lambda = lambda_before_covid)
+dnn_pred_after_covid <- nnetar(google_data_after_covid$GOOG.Close, size = hn_after_covid, lambda = lambda_after_covid)
+
+# Forecasting Using nnetar
+dnn_forecast_before_covid <- forecast(dnn_pred_before_covid, h = 61, PI = TRUE)
+dnn_forecast_after_covid <- forecast(dnn_pred_after_covid, h = 65, PI = TRUE)
+
+plot(dnn_forecast_before_covid, title = "Before COVID-19")
+plot(dnn_forecast_after_covid, title = "After COVID-19")
+
+```
+
+We then analyze the performance of the neural network model using the following parameters:
+
+```{r Analysing neural network model, warning=FALSE, message=FALSE}
+accuracy(dnn_forecast_before_covid)
+accuracy(dnn_forecast_after_covid)
+
+```
+
+
+
+<hr/>
+
+
+# 8. Comparison of all models
+
+We now analyse all the three models with parameters such as **RMSE (Root Mean Square Error), MAE (Mean Absolute Error) and MAPE (Mean Absolute Percentage Error)**.
+
+```{r Summary Table of All Models, warning=FALSE, message=FALSE}
+summary_table_before_covid <- data.frame(Model = character(), RMSE = numeric(), MAE = numeric(), 
+                            MAPE = numeric(), stringsAsFactors = FALSE)
+
+summary_table_after_covid <- data.frame(Model = character(), RMSE = numeric(), MAE = numeric(), 
+                            MAPE = numeric(), stringsAsFactors = FALSE)
+
+summary_table_before_covid[1,] <- list("ARIMA", 13.08, 8.81, 1.02)
+summary_table_before_covid[2,] <- list("KNN", 44.04, 33.78, 3.17)
+summary_table_before_covid[3,] <- list("Neural Network", 13.01, 8.77, 1.02)
+
+summary_table_after_covid[1,] <- list("ARIMA", 16.64, 10.44, 1.09)
+summary_table_after_covid[2,] <- list("KNN", 45.97, 35.78, 3.36)
+summary_table_after_covid[3,] <- list("Neural Network", 14.71, 9.82, 1.03)
+
+kable(summary_table_before_covid, caption = "Summary of Models for data before COVID-19") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, fixed_thead = T )
+
+kable(summary_table_after_covid, caption = "Summary of Models for data after COVID-19") %>%
+ kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F, fixed_thead = T )
+
+```
+
+Thus, from the above summary of model performance parameters, we can see that Neural Network Model performs better than the ARIMA and the KNN Model for both the datasets. Hence, we will use the Neural Network Model to forecast the stock prices for the next two months.
+
+# 9. Final Model : Before COVID-19
+
+We now forecast the values for March and April using the data till February and then compare the forecasted price with the actual price to check if there is any significant impact that can attributed because of COVID-19.
+
+```{r Final Model Before COVID-19, warning=FALSE, message=FALSE}
+
+forecast_during_covid <- data.frame("Date" = row.names(tail(google_data_after_covid, n = 40)),
+                                    "Actual Values" = tail(google_data_after_covid$GOOG.Close, n = 40),
+                                    "Forecasted Values" = dnn_forecast_before_covid$mean[c(-1,-7,-8,-14,-15,-21,-22,-28,-29,-35,-36,-41,-42,-43,-49,-50,-56,-57,-59,-60,-61)])
+
+datatable(forecast_during_covid, filter = 'top')
+
+```
+
+From the table we can see that the actual values of Google Stock in general are a bit higher than forecasted values during the month of March and April. Thus, we can say that Google has still performed considerably well inspite of this global pandemic.
+
+<hr/>
+
+# 10. Final Model : After COVID-19
+
+We now forecast the values for May and June using the data till April to get an idea of future stock price of Google.
+
+```{r Forecasting after COVID-19, warning=FALSE, message=FALSE}
+forecast_after_covid <- data.frame("Date" = (seq.Date(as.Date("2020-04-27"), as.Date("2020-06-30"),by = "day")),
+                                   "Price" = dnn_forecast_after_covid$mean )
+
+datatable(forecast_after_covid, filter = 'top')
+
+```
+
+From the table, we can conclude that the prices of Google Stock will continue to rise and perform well in the coming months of May and June.
+
+
